@@ -57,3 +57,38 @@ https://github.com/user-attachments/assets/a8ceacda-46ff-49d8-b1f7-70188eab75c0
 
 
 
+### ✔️ Benefits
+- Easy to scale
+- Testable code
+- Clear separation of concerns
+- Backend & UI independent
+
+---
+
+## 🛠️ Tech Stack
+
+- **Flutter**
+- **Dart**
+- **Bloc (flutter_bloc)**
+- **WebSocket / Socket.IO**
+- **Secure Storage**
+- **REST APIs**
+
+---
+
+## 🚀 Getting Started
+
+### 1️⃣ Prerequisites
+
+Make sure you have:
+- Flutter SDK (latest stable)
+- Dart
+- Android Studio / VS Code
+- Android Emulator or real device
+
+Check Flutter:
+```bash
+flutter doctor
+
+
+
