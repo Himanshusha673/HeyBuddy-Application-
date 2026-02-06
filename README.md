@@ -4,6 +4,10 @@ HeyBuddy is a modern, real-time chat application built with **Flutter** and a **
 
 The project focuses on clean architecture, smooth UX (WhatsApp-like chat behavior), and scalable real-time communication using WebSockets.
 
+
+https://github.com/user-attachments/assets/a8ceacda-46ff-49d8-b1f7-70188eab75c0
+
+
 ---
 
 ## ✨ Features
