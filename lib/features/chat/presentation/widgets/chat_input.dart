@@ -1,84 +1,149 @@
 import 'package:flutter/material.dart';
+import 'package:hey_buddy/core/config/theme/app_colors.dart';
+import 'package:hey_buddy/core/config/theme/app_text_styles.dart';
 
-class ChatInput extends StatefulWidget {
-  final Function(String) onSend;
+class ModernInputBar extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final VoidCallback onSend;
+  final VoidCallback? onAddTap;
 
-  const ChatInput({super.key, required this.onSend});
+  const ModernInputBar({
+    super.key,
+    required this.controller,
+    required this.focusNode,
+    required this.onSend,
+    this.onAddTap,
+  });
 
-  @override
-  State<ChatInput> createState() => _ChatInputState();
-}
+  void _handleSend(BuildContext context) {
+    if (controller.text.trim().isEmpty) return;
 
-class _ChatInputState extends State<ChatInput> {
-  final TextEditingController _controller = TextEditingController();
-  bool _hasText = false;
+    onSend();
+    controller.clear();
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _handleSend() {
-    if (_controller.text.trim().isNotEmpty) {
-      widget.onSend(_controller.text.trim());
-      _controller.clear();
-      setState(() => _hasText = false);
-    }
+    // ✅ Keyboard close
+    focusNode.unfocus();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.shade300,
-            blurRadius: 4,
-            offset: const Offset(0, -2),
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+        decoration: BoxDecoration(
+          color: AppColors.bgColor,
+          border: Border(
+            top: BorderSide(color: AppColors.borderPrimary.withOpacity(0.08)),
           ),
-        ],
-      ),
-      child: SafeArea(
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _controller,
-                maxLines: null,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: InputDecoration(
-                  hintText: 'Type a message...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide.none,
+        ),
+        child: SafeArea(
+          top: false,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _ActionButton(
+                icon: Icons.add_rounded,
+                onTap: onAddTap,
+                isPrimary: false,
+              ),
+              const SizedBox(width: 8),
+
+              /// Input
+              Expanded(
+                child: Container(
+                  constraints: const BoxConstraints(maxHeight: 120),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardColor,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: AppColors.borderPrimary.withOpacity(0.15),
+                    ),
                   ),
-                  filled: true,
-                  fillColor: Colors.grey.shade100,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 10,
+                  child: TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    maxLines: null,
+                    textInputAction: TextInputAction.newline,
+                    style: AppTextStyles.bodyMedium,
+                    decoration: InputDecoration(
+                      hintText: 'Message…',
+                      hintStyle: AppTextStyles.bodyMedium.copyWith(
+                        color: AppColors.textQuaternary,
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
                   ),
                 ),
-                onChanged: (text) {
-                  setState(() => _hasText = text.trim().isNotEmpty);
+              ),
+
+              const SizedBox(width: 8),
+
+              /// Send (reactive without setState)
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: controller,
+                builder: (_, value, __) {
+                  final canSend = value.text.trim().isNotEmpty;
+
+                  return _ActionButton(
+                    icon: Icons.send_rounded,
+                    isPrimary: canSend,
+                    onTap: canSend ? () => _handleSend(context) : null,
+                  );
                 },
-                onSubmitted: (_) => _handleSend(),
               ),
-            ),
-            const SizedBox(width: 8),
-            CircleAvatar(
-              backgroundColor: _hasText
-                  ? Theme.of(context).primaryColor
-                  : Colors.grey.shade300,
-              child: IconButton(
-                icon: const Icon(Icons.send, color: Colors.white),
-                onPressed: _hasText ? _handleSend : null,
-              ),
-            ),
-          ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// ---------------------------------------------------------------------------
+/// Action Button
+/// ---------------------------------------------------------------------------
+
+class _ActionButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onTap;
+  final bool isPrimary;
+
+  const _ActionButton({
+    required this.icon,
+    required this.onTap,
+    required this.isPrimary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 46,
+      height: 46,
+      child: Material(
+        color:
+            isPrimary
+                ? AppColors.primaryGradient.colors.first
+                : AppColors.cardColor,
+        shape: const CircleBorder(),
+        elevation: isPrimary ? 4 : 0,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: Icon(
+            icon,
+            size: 20,
+            color: isPrimary ? AppColors.textPrimary : AppColors.textTertiary,
+          ),
         ),
       ),
     );

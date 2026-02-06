@@ -1,5 +1,12 @@
+import 'dart:async';
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:hey_buddy/core/storage/secure_storage.dart';
+import 'package:hey_buddy/features/chat/data/models/message_model.dart';
+import 'package:hey_buddy/features/chat/presentation/widgets/chat_input.dart';
+import 'package:uuid/uuid.dart';
 import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/config/theme/app_text_styles.dart';
 import '../../domain/entities/message.dart';
@@ -7,6 +14,7 @@ import '../bloc/chat_bloc.dart';
 import '../bloc/chat_event.dart';
 import '../bloc/chat_state.dart';
 import '../widgets/message_bubble.dart';
+import '../widgets/typing_indicator.dart';
 
 class ChatPage extends StatefulWidget {
   final String conversationId;
@@ -30,43 +38,155 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   late ChatBloc _chatBloc;
   double _keyboardHeight = 0;
   bool _keyboardVisible = false;
+  final Uuid uuid = Uuid();
 
-  // Focus node to detect keyboard visibility
   final FocusNode _focusNode = FocusNode();
 
-  // Store messages locally
-  List<Message> _messages = [];
+  final ValueNotifier<List<Message>> _messages = ValueNotifier([]);
+
+  // Add this ValueNotifier for AI thinking indicator
+  final ValueNotifier<bool> _isAIThinking = ValueNotifier(false);
+
+  // Track pending messages by content to replace with real message
+
+  Timer? _typingTimer;
+
+  bool _isRecipientOnline = false;
+  String? _lastSeen;
+
+  bool _isTyping = false;
 
   @override
   void initState() {
     super.initState();
+    log(
+      'ChatPage initState: conversationId=${widget.conversationId}, recipientId=${widget.recipientId}',
+    );
+
     _chatBloc = context.read<ChatBloc>();
+
+    // Check if it's AI chat
+    final isAIChat =
+        widget.recipientId == "ai-bot" || widget.recipientId == "ai_assistance";
+
+    if (isAIChat) {
+      // For AI chat, set online status immediately
+      _isRecipientOnline = true;
+      _lastSeen = null;
+    }
+
     WidgetsBinding.instance.addObserver(this);
 
-    // Add focus listener for keyboard
+    _isRecipientOnline = false;
+    _lastSeen = null;
+    _isTyping = false;
+
     _focusNode.addListener(_onFocusChange);
+    _textController.addListener(_onTextChanged);
 
-    // Initial scroll to bottom
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollToBottom(instant: true);
-    });
-
-    // Load conversation if ID is provided
-    if (widget.conversationId.isNotEmpty) {
+    if (widget.recipientId != null) {
       _chatBloc.add(
-        LoadConversationEvent(conversationId: widget.conversationId),
+        JoinRoomEvent(partnerId: widget.recipientId ?? "ai_assistance"),
+      );
+      _chatBloc.add(
+        LoadMessagesEvent(partnerId: widget.recipientId ?? 'ai_assistance'),
       );
     }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottom();
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _focusNode.removeListener(_onFocusChange);
+    _textController.removeListener(_onTextChanged);
+    _typingTimer?.cancel();
     _focusNode.dispose();
     _scrollController.dispose();
     _textController.dispose();
+    // Dispose ValueNotifier
+    _isAIThinking.dispose();
     super.dispose();
+  }
+
+  void _onTextChanged() {
+    if (widget.recipientId == null) return;
+
+    final text = _textController.text;
+
+    if (text.isNotEmpty) {
+      _chatBloc.add(
+        SendTypingEvent(receiverId: widget.recipientId, isTyping: true),
+      );
+
+      _typingTimer?.cancel();
+
+      _typingTimer = Timer(const Duration(seconds: 2), () {
+        _chatBloc.add(
+          SendTypingEvent(receiverId: widget.recipientId, isTyping: false),
+        );
+      });
+    } else {
+      _chatBloc.add(
+        SendTypingEvent(receiverId: widget.recipientId, isTyping: false),
+      );
+      _typingTimer?.cancel();
+    }
+  }
+
+  void _onSendMessage() async {
+    final content = _textController.text.trim();
+
+    if (content.isEmpty) return;
+    final userId = await SecureStorage().getUserId();
+
+    final msgId = 'msg_${uuid.v4()}';
+
+    // Create a temporary message to show immediately
+    final tempMessage = MessageModel(
+      id: msgId,
+      content: content,
+      senderId: userId,
+      receiverId: widget.recipientId,
+      timestamp: DateTime.now(),
+      status:
+          ((widget.recipientId == "ai-bot") ||
+                  widget.recipientId == "ai_assistance")
+              ? 'read'
+              : 'sending',
+      role: MessageRole.user,
+      isMine: true,
+    );
+
+    _messages.value.add(tempMessage);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottom();
+    });
+
+    _textController.clear();
+
+    if (widget.recipientId != null) {
+      _chatBloc.add(
+        SendTypingEvent(receiverId: widget.recipientId, isTyping: false),
+      );
+    }
+
+    // Check if it's AI chat and show thinking indicator
+    final isAIChat =
+        widget.recipientId == "ai-bot" || widget.recipientId == "ai_assistance";
+
+    if (isAIChat) {
+      _isAIThinking.value = true;
+    }
+
+    // Send via bloc
+    _chatBloc.add(
+      SendMessageEvent(msg: tempMessage, recipientId: widget.recipientId),
+    );
   }
 
   @override
@@ -77,7 +197,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (keyboardHeight > 0 && _keyboardHeight != keyboardHeight) {
       _keyboardHeight = keyboardHeight;
       _keyboardVisible = true;
-      // Scroll to bottom when keyboard appears
       Future.delayed(const Duration(milliseconds: 100), () {
         _scrollToBottom();
       });
@@ -89,7 +208,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   void _onFocusChange() {
     if (_focusNode.hasFocus) {
-      // Keyboard will show
       Future.delayed(const Duration(milliseconds: 300), () {
         _scrollToBottom();
       });
@@ -108,43 +226,95 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
-  void _onSendMessage() {
-    final content = _textController.text.trim();
-    if (content.isEmpty) return;
-
-    _chatBloc.add(
-      SendMessageEvent(
-        conversationId: widget.conversationId,
-        content: content,
-        recipientId: widget.recipientId,
-      ),
-    );
-
-    _textController.clear();
-    _focusNode.unfocus(); // Hide keyboard after sending
-  }
-
   Widget _buildMessageList(List<Message> messages) {
     if (messages.isEmpty) {
       return _buildEmptyState();
     }
 
-    return ListView.builder(
-      controller: _scrollController,
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 20,
-        bottom: _keyboardVisible ? _keyboardHeight + 20 : 20,
-      ),
-      itemCount: messages.length,
-      itemBuilder: (context, index) {
-        final message = messages[index];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 20),
-          child: MessageBubble(message: message),
+    return ValueListenableBuilder<bool>(
+      valueListenable: _isAIThinking,
+      builder: (context, isAIThinking, child) {
+        return ListView.builder(
+          controller: _scrollController,
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 20,
+            bottom: _keyboardVisible ? _keyboardHeight + 20 : 20,
+          ),
+          itemCount:
+              messages.length + (_isTyping ? 1 : 0) + (isAIThinking ? 1 : 0),
+          itemBuilder: (context, index) {
+            // Handle AI thinking indicator
+            if (isAIThinking &&
+                index == messages.length + (_isTyping ? 1 : 0)) {
+              return _buildAIThinkingIndicator();
+            }
+
+            // Handle typing indicator
+            if (!isAIThinking && _isTyping && index == messages.length) {
+              return const Padding(
+                padding: EdgeInsets.only(bottom: 20),
+                child: TypingIndicator(),
+              );
+            }
+
+            // Handle regular messages
+            final adjustedIndex =
+                isAIThinking && index >= messages.length + (_isTyping ? 1 : 0)
+                    ? index - 1
+                    : index;
+
+            final message = messages[adjustedIndex];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 20),
+              child: MessageBubble(message: message),
+            );
+          },
         );
       },
+    );
+  }
+
+  Widget _buildAIThinkingIndicator() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20, left: 16, right: 16),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.cardColor,
+            borderRadius: BorderRadius.circular(
+              20,
+            ).copyWith(bottomLeft: const Radius.circular(4)),
+            border: Border.all(color: AppColors.borderPrimary.withOpacity(0.2)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    AppColors.accentBlue,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Thinking...',
+                style: AppTextStyles.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -249,6 +419,46 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
+  void _updateMessageStatusById(String messageId, String status) {
+    for (int i = 0; i < _messages.value.length; i++) {
+      if (_messages.value[i].id == messageId) {
+        _messages.value[i] = _messages.value[i].copyWith(status: status);
+        // log('✅ Message status updated: $messageId -> $status');
+        return;
+      }
+    }
+  }
+
+  void _updateTempMessageStatus(String tempId, String status) {
+    for (int i = 0; i < _messages.value.length; i++) {
+      if (_messages.value[i].id == tempId) {
+        _messages.value[i] = _messages.value[i].copyWith(status: status);
+        // log('✅ Temp message status updated: $tempId -> $status');
+        return;
+      }
+    }
+  }
+
+  void _handleNewMessage(Message message) {
+    final index = _messages.value.indexWhere((m) => m.id == message.id);
+    if (index != -1) {
+      final currentMessage = _messages.value[index];
+      final newMessage = message.copyWith(status: currentMessage.status);
+      _messages.value[index] = newMessage;
+    } else {
+      _messages.value.add(message);
+
+      // Check if this is an AI response and hide thinking indicator
+      final isAIChat =
+          widget.recipientId == "ai-bot" ||
+          widget.recipientId == "ai_assistance";
+
+      if (isAIChat && message.role == MessageRole.assistant) {
+        _isAIThinking.value = false;
+      }
+    }
+  }
+
   Widget _buildQuickAction({
     required IconData icon,
     required String label,
@@ -282,6 +492,70 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
+  String _getStatusText() {
+    if (widget.recipientId == null) {
+      return 'Always here to help';
+    }
+
+    if (_isTyping) {
+      return 'typing...';
+    }
+
+    if (_isRecipientOnline) {
+      return 'Online';
+    }
+
+    if (_lastSeen != null && _lastSeen!.isNotEmpty) {
+      try {
+        DateTime lastSeenDate;
+        if (_lastSeen!.contains('T')) {
+          lastSeenDate = DateTime.parse(_lastSeen!);
+        } else {
+          lastSeenDate = DateTime.fromMillisecondsSinceEpoch(
+            int.parse(_lastSeen!),
+            isUtc: false,
+          );
+        }
+
+        final now = DateTime.now();
+        final difference = now.difference(lastSeenDate);
+
+        if (difference.inSeconds < 60) {
+          return 'Last seen just now';
+        } else if (difference.inMinutes < 60) {
+          return 'Last seen ${difference.inMinutes}m ago';
+        } else if (difference.inHours < 24) {
+          return 'Last seen ${difference.inHours}h ago';
+        } else if (difference.inDays < 7) {
+          return 'Last seen ${difference.inDays}d ago';
+        } else {
+          return 'Last seen on ${lastSeenDate.day}/${lastSeenDate.month}/${lastSeenDate.year}';
+        }
+      } catch (e) {
+        // log('Error parsing last seen: $e, value: $_lastSeen');
+        return 'Offline';
+      }
+    }
+
+    return 'Offline';
+  }
+
+  Color _getStatusColor() {
+    if (widget.recipientId == null) {
+      return AppColors.accentBlue;
+    }
+
+    if (_isTyping) {
+      return AppColors.accentBlue;
+    }
+
+    if (_isRecipientOnline) {
+      return AppColors.success;
+    }
+
+    return AppColors.textTertiary;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -289,119 +563,23 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       appBar: AppBar(
         backgroundColor: AppColors.bgColor,
         elevation: 0,
-        leading: IconButton(
-          icon: Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: AppColors.borderPrimary.withOpacity(0.2),
-              ),
-            ),
-            child: const Icon(
-              Icons.arrow_back,
-              color: AppColors.textPrimary,
-              size: 20,
-            ),
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Row(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                gradient:
-                    widget.recipientId != null
-                        ? null
-                        : AppColors.primaryGradient,
-                color: widget.recipientId != null ? AppColors.cardColor : null,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: AppColors.borderPrimary.withOpacity(0.2),
-                ),
-              ),
-              child: Icon(
-                widget.recipientId != null ? Icons.person : Icons.auto_awesome,
-                size: 20,
-                color: AppColors.textPrimary,
-              ),
+            Text(
+              widget.recipientName ?? 'HeyBuddy AI',
+              style: AppTextStyles.headlineSmall,
+              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.recipientName ?? 'HeyBuddy AI',
-                    style: AppTextStyles.headlineSmall,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    widget.recipientId != null
-                        ? 'Online'
-                        : 'Always here to help',
-                    style: AppTextStyles.bodySmall.copyWith(
-                      color: AppColors.textTertiary,
-                    ),
-                  ),
-                ],
+            Text(
+              _getStatusText(),
+              style: AppTextStyles.bodySmall.copyWith(
+                color: _getStatusColor(),
+                fontStyle: _isTyping ? FontStyle.italic : FontStyle.normal,
               ),
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: AppColors.borderPrimary.withOpacity(0.2),
-                ),
-              ),
-              child: const Icon(
-                Icons.video_call_outlined,
-                color: AppColors.textPrimary,
-                size: 20,
-              ),
-            ),
-            onPressed: () {},
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: AppColors.borderPrimary.withOpacity(0.2),
-                ),
-              ),
-              child: const Icon(
-                Icons.phone_outlined,
-                color: AppColors.textPrimary,
-                size: 20,
-              ),
-            ),
-            onPressed: () {},
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: AppColors.borderPrimary.withOpacity(0.2),
-                ),
-              ),
-              child: const Icon(
-                Icons.more_vert,
-                color: AppColors.textPrimary,
-                size: 20,
-              ),
-            ),
-            onPressed: () {},
-          ),
-        ],
       ),
       body: Column(
         children: [
@@ -409,7 +587,39 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             child: BlocConsumer<ChatBloc, ChatState>(
               listener: (context, state) {
                 if (state is MessageSent) {
-                  _scrollToBottom();
+                  if (widget.recipientId == "ai-bot" ||
+                      widget.recipientId == "ai_assistance") {
+                    final messageIndex = _messages.value.indexWhere(
+                      (m) => m.id == state.msg.id,
+                    );
+
+                    if (messageIndex != -1) {
+                      final updatedMessages = [..._messages.value];
+                      updatedMessages[messageIndex] =
+                          updatedMessages[messageIndex].copyWith(
+                            status: 'read',
+                          );
+                      _messages.value = updatedMessages;
+
+                      log('✅ Message marked as sent: ${state.msg.id}');
+                    }
+                  } else {
+                    final messageIndex = _messages.value.indexWhere(
+                      (m) => m.id == state.msg.id,
+                    );
+
+                    if (messageIndex != -1) {
+                      final updatedMessages = [..._messages.value];
+                      updatedMessages[messageIndex] =
+                          updatedMessages[messageIndex].copyWith(
+                            status: 'sent',
+                          );
+                      _messages.value = updatedMessages;
+
+                      log('✅ Message marked as sent: ${state.msg.id}');
+                    }
+                  }
+
                   if (state.isPending) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -436,19 +646,71 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 }
 
                 if (state is NewMessageReceived) {
-                  // Add new message to local list and scroll to bottom
-                  _messages.add(state.message);
+                  log('📩 New message received: ${state.message.id}');
+                  _handleNewMessage(state.message);
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _scrollToBottom(instant: true);
+                  });
+                }
+
+                if (state is ChatPageConversationLoadedLoaded) {
+                  _messages.value = state.messages;
+
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     _scrollToBottom();
                   });
                 }
 
-                if (state is ChatPageConversationLoadedLoaded) {
-                  // Update messages when conversation is loaded
-                  _messages = state.messages;
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    _scrollToBottom();
-                  });
+                if (state is MessageStatusUpdated) {
+                  final statusData = state.statusData;
+                  // log('🔄 Received status update: $statusData');
+
+                  // Handle user status updates (online/offline)
+                  if (statusData['type'] == 'user_status' &&
+                      statusData['userId'] == widget.recipientId) {
+                    setState(() {
+                      _isRecipientOnline = statusData['status'] == 'online';
+                      if (!_isRecipientOnline &&
+                          statusData['lastSeen'] != null) {
+                        _lastSeen = statusData['lastSeen']?.toString();
+                        _isTyping = false;
+                      }
+                    });
+                    // log(
+                    //   '👤 User status updated: ${statusData['status']}, lastSeen: $_lastSeen',
+                    // );
+                  }
+                  // Handle typing indicators
+                  else if (statusData.containsKey('isTyping') &&
+                      statusData['userId'] == widget.recipientId) {
+                    setState(() {
+                      _isTyping = statusData['isTyping'] ?? false;
+                    });
+                    if (_isTyping) {
+                      _scrollToBottom();
+                    }
+                    // log('⌨️ Typing indicator: $_isTyping');
+                  }
+                  // Handle message delivery status with ID matching
+                  else if (statusData.containsKey('messageId')) {
+                    final messageId = statusData['messageId']?.toString();
+                    final status = statusData['status']?.toString();
+                    // final senderId = statusData['senderId']?.toString();
+                    // final receiverId = statusData['receiverId']?.toString();
+
+                    if (messageId != null && status != null) {
+                      // log('📨 Updating message status: $messageId -> $status');
+
+                      // Also check for pending messages by content
+                      if (messageId.contains('temp_')) {
+                        // Handle temp message status
+                        _updateTempMessageStatus(messageId, status);
+                      } else {
+                        // Update real message status
+                        _updateMessageStatusById(messageId, status);
+                      }
+                    }
+                  }
                 }
 
                 if (state is ChatPageConversationsError) {
@@ -456,7 +718,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                     SnackBar(
                       content: Row(
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.error_outline,
                             color: AppColors.textPrimary,
                             size: 20,
@@ -485,6 +747,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       ),
                     ),
                   );
+
+                  // Hide AI thinking indicator on error
+                  final isAIChat =
+                      widget.recipientId == "ai-bot" ||
+                      widget.recipientId == "ai_assistance";
+                  if (isAIChat) {
+                    _isAIThinking.value = false;
+                  }
                 }
               },
               builder: (context, state) {
@@ -493,7 +763,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        SizedBox(
+                        const SizedBox(
                           width: 48,
                           height: 48,
                           child: CircularProgressIndicator(
@@ -515,159 +785,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   );
                 }
 
-                // For other states, show messages from local list
-                return _buildMessageList(_messages);
+                return _buildMessageList(_messages.value);
               },
             ),
           ),
-          _ModernInputBar(
+          ModernInputBar(
             controller: _textController,
             focusNode: _focusNode,
             onSend: _onSendMessage,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _ModernInputBar extends StatelessWidget {
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final VoidCallback onSend;
-
-  const _ModernInputBar({
-    required this.controller,
-    required this.focusNode,
-    required this.onSend,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-      decoration: BoxDecoration(
-        color: AppColors.bgColor,
-        border: Border(
-          top: BorderSide(
-            color: AppColors.borderPrimary.withOpacity(0.1),
-            width: 1,
-          ),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadowLight,
-            blurRadius: 30,
-            offset: const Offset(0, -10),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          _buildActionButton(
-            icon: Icons.add_circle_outline,
-            onPressed: () {},
-            isActive: false,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Container(
-              constraints: const BoxConstraints(maxHeight: 120),
-              decoration: BoxDecoration(
-                color: AppColors.cardColor,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: AppColors.borderPrimary.withOpacity(0.2),
-                ),
-              ),
-              child: TextField(
-                controller: controller,
-                focusNode: focusNode,
-                maxLines: null,
-                textInputAction: TextInputAction.newline,
-                style: AppTextStyles.bodyMedium,
-                decoration: InputDecoration(
-                  hintText: 'Message...',
-                  hintStyle: AppTextStyles.bodyMedium.copyWith(
-                    color: AppColors.textQuaternary,
-                  ),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                ),
-                onSubmitted: (_) => onSend(),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          BlocBuilder<ChatBloc, ChatState>(
-            buildWhen: (previous, current) => current is MessageSent,
-            builder: (context, state) {
-              final isSending = state is MessageSent && state.isPending;
-              return AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                child:
-                    isSending
-                        ? Container(
-                          width: 48,
-                          height: 48,
-                          padding: const EdgeInsets.all(12),
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              AppColors.textPrimary,
-                            ),
-                          ),
-                        )
-                        : _buildActionButton(
-                          icon: Icons.send_rounded,
-                          onPressed: onSend,
-                          isActive: controller.text.trim().isNotEmpty,
-                        ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-    required bool isActive,
-  }) {
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        gradient: isActive ? AppColors.primaryGradient : null,
-        color: isActive ? null : AppColors.cardColor,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.borderPrimary.withOpacity(0.2)),
-        boxShadow:
-            isActive
-                ? [
-                  BoxShadow(
-                    color: AppColors.accentBlue.withOpacity(0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-                : null,
-      ),
-      child: IconButton(
-        icon: Icon(
-          icon,
-          color: isActive ? AppColors.textPrimary : AppColors.textTertiary,
-          size: 20,
-        ),
-        onPressed: onPressed,
       ),
     );
   }

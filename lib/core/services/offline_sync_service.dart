@@ -47,7 +47,6 @@ class OfflineSyncService {
       for (final message in pendingMessages) {
         try {
           await _chatRemoteDataSource.sendMessage(
-            message['conversationId'],
             message['content'],
             message['recipientId'],
           );

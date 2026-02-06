@@ -8,10 +8,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final LoginUseCase loginUseCase;
   final RegisterUseCase registerUseCase;
 
-  AuthBloc({
-    required this.loginUseCase,
-    required this.registerUseCase,
-  }) : super(AuthInitial()) {
+  AuthBloc({required this.loginUseCase, required this.registerUseCase})
+    : super(AuthInitial()) {
     on<LoginRequested>(_onLoginRequested);
     on<RegisterRequested>(_onRegisterRequested);
     on<LogoutRequested>(_onLogoutRequested);
@@ -36,7 +34,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     emit(AuthLoading());
     try {
-      final user = await registerUseCase(event.name, event.email, event.password);
+      final user = await registerUseCase(
+        event.name,
+        event.email,
+        event.password,
+      );
       emit(AuthAuthenticated(user: user));
     } catch (e) {
       emit(AuthError(message: e.toString()));

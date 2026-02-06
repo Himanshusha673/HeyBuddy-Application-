@@ -17,6 +17,8 @@ class AppTheme {
         background: AppColors.bgColor,
         error: AppColors.error,
       ),
+
+    
       
       // Text Theme
       textTheme: GoogleFonts.interTextTheme(
@@ -124,7 +126,7 @@ class AppTheme {
       ),
       
       // Card Theme
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: AppColors.cardColor,
         elevation: 0,
         shape: RoundedRectangleBorder(

@@ -31,11 +31,11 @@ class _LoginPageState extends State<LoginPage> {
   void _onLoginPressed() {
     if (_formKey.currentState!.validate()) {
       context.read<AuthBloc>().add(
-            LoginRequested(
-              email: _emailController.text.trim(),
-              password: _passwordController.text,
-            ),
-          );
+        LoginRequested(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        ),
+      );
     }
   }
 
@@ -77,33 +77,32 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 24),
                     Text(
                       'Welcome Back!',
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                      style: Theme.of(context).textTheme.headlineMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'Login to continue chatting',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Colors.grey,
-                          ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: Colors.grey),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 48),
                     CustomTextField(
                       controller: _emailController,
-                      label: 'Email',
-                      hint: 'Enter your email',
-                      prefixIcon: Icons.email_outlined,
+                      label: 'Username',
+                      hint: 'Enter your username',
+                      prefixIcon: Icons.person,
                       keyboardType: TextInputType.emailAddress,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter your email';
                         }
-                        if (!value.contains('@')) {
-                          return 'Please enter a valid email';
-                        }
+                        // if (!value.contains('@')) {
+                        //   return 'Please enter a valid email';
+                        // }
                         return null;
                       },
                     ),
@@ -137,6 +136,7 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 24),
                     CustomButton(
                       text: 'Login',
+                      backgroundColor: Colors.blue,
                       onPressed: isLoading ? null : _onLoginPressed,
                       isLoading: isLoading,
                     ),

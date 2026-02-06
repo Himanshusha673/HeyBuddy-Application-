@@ -1,14 +1,10 @@
 import 'package:hey_buddy/core/network/connectivity_manager.dart';
 import 'package:hey_buddy/core/storage/offline_storage.dart';
-
 import 'package:hey_buddy/features/chat/domain/entities/user.dart';
-
 import '../../domain/entities/conversation.dart';
 import '../../domain/entities/message.dart';
 import '../../domain/repositories/chat_repository.dart';
-
 import '../datasources/chat_remote_datasource.dart';
-import '../models/message_model.dart';
 
 class ChatRepositoryImpl implements ChatRepository {
   final ChatRemoteDataSource remoteDataSource;
@@ -22,38 +18,20 @@ class ChatRepositoryImpl implements ChatRepository {
   });
 
   @override
-  Future<Message> sendMessage(String conversationId, String content, String? recipientId,) async {
-   if (!connectivityManager.isOnline) {
+  Future<Message> sendMessage(Message msg, String? recipientId) async {
+    if (!connectivityManager.isOnline) {
       await offlineStorage.savePendingMessage({
-        'conversationId': conversationId,
-        'content': content,
+        'content': msg.content,
         'recipientId': recipientId,
         'timestamp': DateTime.now().toIso8601String(),
       });
 
-      final tempMessage = MessageModel(
-        id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
-        content: content,
-        role: MessageRole.user,
-        timestamp: DateTime.now(),
+      throw Exception(
+        'No internet connection. Message will be sent when online.',
       );
-
-      if (conversationId.isNotEmpty) {
-        await offlineStorage.cacheMessage(conversationId, tempMessage);
-      }
-
-      return tempMessage;
     }
 
-    final message = await remoteDataSource.sendMessage(
-      conversationId,
-      content,
-   recipientId,
-    );
-
-    if (conversationId.isNotEmpty) {
-      await offlineStorage.cacheMessage(conversationId, message);
-    }
+    final message = await remoteDataSource.sendMessage(msg, recipientId);
 
     return message;
   }
@@ -71,7 +49,6 @@ class ChatRepositoryImpl implements ChatRepository {
       await offlineStorage.cacheConversations(conversations);
       return conversations;
     } catch (e) {
-      // Try to return cached data on error
       final cached = await offlineStorage.getCachedConversations();
       if (cached != null) return cached;
       rethrow;
@@ -79,18 +56,23 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<List<Message>> getConversationById(String id) async {
-    return await remoteDataSource.getConversationById(id);
-  }
-
-  @override
-  Future<void> deleteConversation(String id) async {
-    await remoteDataSource.deleteConversation(id);
+  Future<List<Message>> getMessages(String senderId, String receiverId) async {
+    return await remoteDataSource.getMessages(senderId, receiverId);
   }
 
   @override
   Stream<Message> listenToMessages() {
     return remoteDataSource.listenToMessages();
+  }
+
+  @override
+  Stream<Map<String, dynamic>> listenToStatus() {
+    return remoteDataSource.listenToStatus();
+  }
+
+  @override
+  Stream<Map<String, dynamic>> listenToTyping() {
+    return remoteDataSource.listenToTyping();
   }
 
   @override
@@ -101,6 +83,39 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<void> disconnectWebSocket() async {
     await remoteDataSource.disconnectWebSocket();
+  }
+
+  @override
+  void joinRoom(String userId, String partnerId) {
+    remoteDataSource.joinRoom(userId, partnerId);
+  }
+
+  @override
+  void markMessageAsDelivered(
+    String messageId,
+    String senderId,
+    String receiverId,
+  ) {
+    remoteDataSource.markMessageAsDelivered(messageId, senderId, receiverId);
+  }
+
+  @override
+  void markMessagesAsRead(
+    List<String> messageIds,
+    String senderId,
+    String receiverId,
+  ) {
+    remoteDataSource.markMessagesAsRead(messageIds, senderId, receiverId);
+  }
+
+  @override
+  void sendTypingStart(String userId, String receiverId) {
+    remoteDataSource.sendTypingStart(userId, receiverId);
+  }
+
+  @override
+  void sendTypingEnd(String userId, String receiverId) {
+    remoteDataSource.sendTypingEnd(userId, receiverId);
   }
 
   @override

@@ -16,33 +16,50 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   AuthRemoteDataSourceImpl({required this.apiClient});
 
   @override
-  Future<AuthUserModel> login(String email, String password) async {
+  Future<AuthUserModel> login(String username, String password) async {
     final response = await apiClient.post(
       ApiEndpoints.login,
-      body: {'email': email, 'password': password},
+      body: {'username': username, 'password': password},
     );
 
-    await secureStorage.saveToken(response['token']);
-    await secureStorage.saveUserId(response['user']['_id']);
+    final data = response['data'];
+    final token = data?['token'];
+    final userData = data?['user'];
 
-    return AuthUserModel.fromJson(response['user']);
+    if (token != null) {
+      await secureStorage.saveToken(token);
+    }
+
+    if (userData != null && userData['_id'] != null) {
+      await secureStorage.saveUserId(userData['_id']);
+    }
+
+    return AuthUserModel.fromJson(userData ?? {});
   }
 
   @override
   Future<AuthUserModel> register(
-    String name,
+    String username,
     String email,
     String password,
   ) async {
     final response = await apiClient.post(
       ApiEndpoints.register,
-      body: {'name': name, 'email': email, 'password': password},
+      body: {'username': username, 'password': password},
     );
 
-    await secureStorage.saveToken(response['token']);
-    await secureStorage.saveUserId(response['user']['_id']);
+    final data = response['data'];
+    final token = data?['token'];
+    final userId = data?['userId'];
 
-    return AuthUserModel.fromJson(response['user']);
+    if (token != null) {
+      await secureStorage.saveToken(token);
+    }
+    if (userId != null) {
+      await secureStorage.saveUserId(userId);
+    }
+
+    return AuthUserModel.fromJson({'_id': userId, 'username': username});
   }
 
   @override

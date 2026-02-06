@@ -11,12 +11,12 @@ class OfflineStorage {
 
   Future<void> initialize() async {
     await Hive.initFlutter();
-    
+
     // Open boxes
     await Hive.openBox(_messagesBox);
     await Hive.openBox(_conversationsBox);
     await Hive.openBox(_pendingMessagesBox);
-    
+
     AppLogger.log('Offline storage initialized', 'Storage');
   }
 
@@ -36,11 +36,11 @@ class OfflineStorage {
     try {
       final box = Hive.box(_conversationsBox);
       final data = box.get('conversations') as List<dynamic>?;
-      
+
       if (data == null) return null;
-      
+
       return data
-          .map((item) => ConversationModel.fromJson(jsonDecode(item)))
+          .map((item) => ConversationModel.fromChatRoom(jsonDecode(item)))
           .toList();
     } catch (e, stackTrace) {
       AppLogger.error('Failed to get cached conversations', e, stackTrace);
@@ -54,13 +54,16 @@ class OfflineStorage {
       final box = Hive.box(_messagesBox);
       final messages = await _getMessagesForConversation(conversationId);
       messages.add(message);
-      
+
       await box.put(
         conversationId,
         messages.map((m) => jsonEncode(m.toJson())).toList(),
       );
-      
-      AppLogger.log('Cached message for conversation $conversationId', 'Storage');
+
+      AppLogger.log(
+        'Cached message for conversation $conversationId',
+        'Storage',
+      );
     } catch (e, stackTrace) {
       AppLogger.error('Failed to cache message', e, stackTrace);
     }
@@ -72,9 +75,9 @@ class OfflineStorage {
     try {
       final box = Hive.box(_messagesBox);
       final data = box.get(conversationId) as List<dynamic>?;
-      
+
       if (data == null) return [];
-      
+
       return data
           .map((item) => MessageModel.fromJson(jsonDecode(item)))
           .toList();
@@ -90,7 +93,7 @@ class OfflineStorage {
       final pending = await getPendingMessages();
       pending.add(message);
       await box.put('pending', pending.map((m) => jsonEncode(m)).toList());
-      
+
       AppLogger.log('Saved pending message', 'Storage');
     } catch (e, stackTrace) {
       AppLogger.error('Failed to save pending message', e, stackTrace);
@@ -101,10 +104,12 @@ class OfflineStorage {
     try {
       final box = Hive.box(_pendingMessagesBox);
       final data = box.get('pending') as List<dynamic>?;
-      
+
       if (data == null) return [];
-      
-      return data.map((item) => jsonDecode(item) as Map<String, dynamic>).toList();
+
+      return data
+          .map((item) => jsonDecode(item) as Map<String, dynamic>)
+          .toList();
     } catch (e) {
       return [];
     }
@@ -123,11 +128,12 @@ class OfflineStorage {
   Future<void> removePendingMessage(Map<String, dynamic> message) async {
     try {
       final pending = await getPendingMessages();
-      pending.removeWhere((m) => 
-        m['content'] == message['content'] && 
-        m['timestamp'] == message['timestamp']
+      pending.removeWhere(
+        (m) =>
+            m['content'] == message['content'] &&
+            m['timestamp'] == message['timestamp'],
       );
-      
+
       final box = Hive.box(_pendingMessagesBox);
       await box.put('pending', pending.map((m) => jsonEncode(m)).toList());
     } catch (e, stackTrace) {

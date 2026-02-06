@@ -2,6 +2,8 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:hey_buddy/core/storage/secure_storage.dart';
+import 'package:hey_buddy/features/auth/presentation/pages/login_page.dart';
 import '../../../../core/config/theme/app_colors.dart';
 import '../../../../core/config/theme/app_text_styles.dart';
 import '../../../../shared/widgets/connectivity_banner.dart';
@@ -32,7 +34,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
   Widget build(BuildContext context) {
     return ConnectivityBanner(
       child: Scaffold(
-        backgroundColor: AppColors.bgColor,
+        backgroundColor: Colors.white,
         appBar: AppBar(
           backgroundColor: AppColors.bgColor,
           elevation: 0,
@@ -58,9 +60,13 @@ class _ConversationsPageState extends State<ConversationsPage> {
           ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.refresh, color: AppColors.textSecondary),
+              icon: const Icon(Icons.logout, color: AppColors.textSecondary),
               onPressed: () {
-                context.read<ChatBloc>().add(LoadConversationsEvent());
+                SecureStorage().clearAll().then((_) {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (context) => LoginPage()),
+                  );
+                });
               },
             ),
           ],
@@ -168,6 +174,11 @@ class _ConversationsPageState extends State<ConversationsPage> {
                   }
 
                   if (state is HomePageConversationsLoaded) {
+                    // TEMPORARY: Show all conversations without filtering
+                    log(
+                      '📱 Displaying ${state.conversations.length} conversations',
+                    );
+
                     if (state.conversations.isEmpty) {
                       return Center(
                         child: Column(
@@ -203,160 +214,43 @@ class _ConversationsPageState extends State<ConversationsPage> {
                       );
                     }
 
-                    final aiConversations =
-                        state.conversations
-                            .where((c) => c.type == 'ai')
-                            .toList();
-                    final userConversations =
-                        state.conversations
-                            .where((c) => c.type == 'user')
-                            .toList();
-
                     return RefreshIndicator(
                       onRefresh: () async {
                         context.read<ChatBloc>().add(LoadConversationsEvent());
                       },
                       color: AppColors.accentBlue,
                       backgroundColor: AppColors.cardColor,
-                      child: CustomScrollView(
-                        slivers: [
-                          // AI Conversations Section
-                          if (aiConversations.isNotEmpty) ...[
-                            SliverToBoxAdapter(
-                              child: Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  16,
-                                  16,
-                                  16,
-                                  8,
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.auto_awesome,
-                                      size: 16,
-                                      color: AppColors.accentBlue,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'AI Conversations',
-                                      style: AppTextStyles.labelMedium.copyWith(
-                                        color: AppColors.textTertiary,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: state.conversations.length,
+                        itemBuilder: (context, index) {
+                          final conversation = state.conversations[index];
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            decoration: BoxDecoration(
+                              color: AppColors.cardColor,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: AppColors.borderSecondary,
                               ),
                             ),
-                            SliverList(
-                              delegate: SliverChildBuilderDelegate((
-                                context,
-                                index,
-                              ) {
-                                final conversation = aiConversations[index];
-                                return Container(
-                                  margin: const EdgeInsets.fromLTRB(
-                                    16,
-                                    0,
-                                    16,
-                                    12,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.cardColor,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: AppColors.borderSecondary,
-                                    ),
-                                  ),
-                                  child: ConversationTile(
-                                    conversation: conversation,
-                                    onTap: () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder:
-                                              (_) => ChatPage(
-                                                conversationId: conversation.id,
-                                                recipientId:
-                                                    conversation.userId,
-                                              ),
+                            child: ConversationTile(
+                              conversation: conversation,
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder:
+                                        (_) => ChatPage(
+                                          conversationId: conversation.id,
+                                          recipientId: conversation.userId,
+                                          recipientName: conversation.username,
                                         ),
-                                      );
-                                    },
                                   ),
                                 );
-                              }, childCount: aiConversations.length),
+                              },
                             ),
-                          ],
-
-                          // User Conversations Section
-                          if (userConversations.isNotEmpty) ...[
-                            SliverToBoxAdapter(
-                              child: Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  16,
-                                  8,
-                                  16,
-                                  8,
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.people,
-                                      size: 16,
-                                      color: AppColors.accentBlue,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'User Conversations',
-                                      style: AppTextStyles.labelMedium.copyWith(
-                                        color: AppColors.textTertiary,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            SliverList(
-                              delegate: SliverChildBuilderDelegate((
-                                context,
-                                index,
-                              ) {
-                                final conversation = userConversations[index];
-                                return Container(
-                                  margin: const EdgeInsets.fromLTRB(
-                                    16,
-                                    0,
-                                    16,
-                                    12,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.cardColor,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: AppColors.borderSecondary,
-                                    ),
-                                  ),
-                                  child: ConversationTile(
-                                    conversation: conversation,
-                                    onTap: () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder:
-                                              (_) => ChatPage(
-                                                conversationId: conversation.id,
-                                                recipientId: conversation.userId,
-                                              ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                );
-                              }, childCount: userConversations.length),
-                            ),
-                          ],
-                        ],
+                          );
+                        },
                       ),
                     );
                   }
@@ -426,13 +320,20 @@ class _ConversationsPageState extends State<ConversationsPage> {
                   subtitle: 'Start a conversation with HeyBuddy AI',
                   onTap: () {
                     Navigator.pop(context);
+
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => const ChatPage(conversationId: ''),
+                        builder:
+                            (_) => const ChatPage(
+                              conversationId: 'ai-bot',
+                              recipientId: 'ai-bot',
+                              recipientName: 'HeyBuddy AI',
+                            ),
                       ),
                     );
                   },
                 ),
+
                 const SizedBox(height: 12),
                 _NewChatOption(
                   icon: Icons.person_add,

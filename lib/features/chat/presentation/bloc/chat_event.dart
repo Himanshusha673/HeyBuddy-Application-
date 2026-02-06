@@ -9,34 +9,41 @@ abstract class ChatEvent extends Equatable {
 }
 
 class SendMessageEvent extends ChatEvent {
-  final String conversationId;
-  final String content;
-  final String? recipientId; // ADDED THIS
+  final Message msg;
+  final String? recipientId;
 
   const SendMessageEvent({
-    required this.conversationId,
-    required this.content,
-    this.recipientId, // ADDED THIS
+    required this.msg,
+    this.recipientId,
   });
 
   @override
-  List<Object?> get props => [conversationId, content, recipientId];
+  List<Object?> get props => [msg, recipientId];
 }
 
 class LoadConversationsEvent extends ChatEvent {}
 
-class LoadConversationEvent extends ChatEvent {
-  final String conversationId;
+class LoadMessagesEvent extends ChatEvent {
+  final String partnerId;
 
-  const LoadConversationEvent({required this.conversationId});
+  const LoadMessagesEvent({required this.partnerId});
 
   @override
-  List<Object?> get props => [conversationId];
+  List<Object?> get props => [partnerId];
 }
 
 class ConnectWebSocketEvent extends ChatEvent {}
 
 class DisconnectWebSocketEvent extends ChatEvent {}
+
+class JoinRoomEvent extends ChatEvent {
+  final String partnerId;
+
+  const JoinRoomEvent({required this.partnerId});
+
+  @override
+  List<Object?> get props => [partnerId];
+}
 
 class NewMessageReceivedEvent extends ChatEvent {
   final Message message;
@@ -45,6 +52,28 @@ class NewMessageReceivedEvent extends ChatEvent {
 
   @override
   List<Object?> get props => [message];
+}
+
+class MessageStatusUpdateEvent extends ChatEvent {
+  final Map<String, dynamic> statusData;
+
+  const MessageStatusUpdateEvent({required this.statusData});
+
+  @override
+  List<Object?> get props => [statusData];
+}
+
+class SendTypingEvent extends ChatEvent {
+  final String? receiverId;
+  final bool isTyping;
+
+  const SendTypingEvent({
+    required this.receiverId,
+    required this.isTyping,
+  });
+
+  @override
+  List<Object?> get props => [receiverId, isTyping];
 }
 
 class LoadUsersEvent extends ChatEvent {}

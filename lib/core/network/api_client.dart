@@ -13,7 +13,8 @@ class ApiClient {
   late final Dio _dio;
   final String baseUrl;
 
-  ApiClient({Dio? dio, this.baseUrl = AppConstants.baseUrl}) {
+  ApiClient({Dio? dio, String? baseUrl})
+    : baseUrl = baseUrl ?? AppConstants.baseUrl {
     _dio = dio ?? Dio();
     _setupDio();
   }

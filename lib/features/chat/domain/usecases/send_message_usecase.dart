@@ -7,10 +7,9 @@ class SendMessageUseCase {
   SendMessageUseCase(this.repository);
 
   Future<Message> call(
-    String conversationId,
-    String content, {
-    String? recipientId, // ADDED THIS
+    Message msg, {
+    String? recipientId, 
   }) {
-    return repository.sendMessage(conversationId, content, recipientId);
+    return repository.sendMessage(msg, recipientId);
   }
 }

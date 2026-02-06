@@ -68,11 +68,12 @@ class MessageSending extends ChatState {}
 
 class MessageSent extends ChatState {
   final bool isPending;
+  final Message msg;
 
-  const MessageSent({this.isPending = false});
+  const MessageSent({this.isPending = false, required this.msg});
 
   @override
-  List<Object?> get props => [ isPending];
+  List<Object?> get props => [isPending];
 }
 
 class NewMessageReceived extends ChatState {
@@ -82,6 +83,15 @@ class NewMessageReceived extends ChatState {
 
   @override
   List<Object?> get props => [message];
+}
+
+class MessageStatusUpdated extends ChatState {
+  final Map<String, dynamic> statusData;
+
+  const MessageStatusUpdated({required this.statusData});
+
+  @override
+  List<Object?> get props => [statusData];
 }
 
 class ChatError extends ChatState {
@@ -101,9 +111,15 @@ class UsersLoading extends ChatState {}
 class UsersLoaded extends ChatState {
   final List<User> users;
   const UsersLoaded(this.users);
+
+  @override
+  List<Object?> get props => [users];
 }
 
 class UsersError extends ChatState {
   final String message;
-  UsersError(this.message);
+  const UsersError(this.message);
+
+  @override
+  List<Object?> get props => [message];
 }

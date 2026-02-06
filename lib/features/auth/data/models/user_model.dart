@@ -4,16 +4,19 @@ class AuthUserModel extends AuthUser {
   const AuthUserModel({
     required super.id,
     required super.email,
-    required super.name,
+    required super.username,
     required super.createdAt,
   });
 
   factory AuthUserModel.fromJson(Map<String, dynamic> json) {
     return AuthUserModel(
       id: json['_id'] ?? json['id'],
-      email: json['email'],
-      name: json['name'],
-      createdAt: DateTime.parse(json['createdAt']),
+      email: json['email'] ?? '', // Email backend se nahi aa rahi
+      username: json['username'], // Backend mein 'username' field hai
+      createdAt:
+          json['createdAt'] != null
+              ? DateTime.parse(json['createdAt'])
+              : DateTime.now(),
     );
   }
 
@@ -21,7 +24,7 @@ class AuthUserModel extends AuthUser {
     return {
       'id': id,
       'email': email,
-      'name': name,
+      'username': username,
       'createdAt': createdAt.toIso8601String(),
     };
   }

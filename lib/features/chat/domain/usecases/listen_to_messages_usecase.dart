@@ -9,4 +9,12 @@ class ListenToMessagesUseCase {
   Stream<Message> call() {
     return repository.listenToMessages();
   }
+
+  Stream<Map<String, dynamic>> statusStream() {
+    return repository.listenToStatus();
+  }
+
+  Stream<Map<String, dynamic>> typingStream() {
+    return repository.listenToTyping();
+  }
 }
