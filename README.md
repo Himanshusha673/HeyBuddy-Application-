@@ -51,5 +51,5 @@ The project focuses on clean architecture, smooth UX (WhatsApp-like chat behavio
 
 ---
 
-## 📂 Project Structure (Frontend)
+
 
